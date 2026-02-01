@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Cosmic | Interactive Particle System</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #ffffff;
+            --text-muted: rgba(255, 255, 255, 0.7);
+            --accent-cyan: #00f3ff;
+            --accent-pink: #ff00aa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #020205;
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Camera Feed (Hidden/Debug) */
+        #video-feed {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 160px;
+            height: 120px;
+            border-radius: 12px;
+            opacity: 0.3;
+            z-index: 2;
+            transform: scaleX(-1);
+            /* Mirror for natural feel */
+            border: 1px solid var(--glass-border);
+            transition: opacity 0.3s;
+        }
+
+        #video-feed:hover {
+            opacity: 1;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            /* Let clicks pass through to canvas (though canvas isn't interactive via mouse here) */
+        }
+
+        /* Control Panel */
+        .glass-panel {
+            position: absolute;
+            top: 50%;
+            right: 30px;
+            transform: translateY(-50%);
+            width: 280px;
+            padding: 24px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .panel-header {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: linear-gradient(90deg, #fff, #aaa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        /* Form Elements */
+        select {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: white;
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        select:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .toggle-label {
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        /* Custom Checkbox */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--accent-cyan);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Status & Feedback */
+        #status-indicator {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            padding: 10px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid var(--glass-border);
+            pointer-events: auto;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ff3333;
+            box-shadow: 0 0 10px #ff3333;
+            transition: all 0.3s;
+        }
+
+        .status-dot.active {
+            background-color: var(--accent-cyan);
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .status-text {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        /* Loader */
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #020205;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+        }
+
+        .loader-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent-cyan);
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loader">
+        <div class="loader-spinner"></div>
+        <div style="font-size: 0.9rem; letter-spacing: 2px;">INITIALIZING NEURAL CORE</div>
+    </div>
+
+    <!-- Main Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Hidden Video for MediaPipe -->
+    <video id="video-feed" playsinline></video>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        <!-- Status -->
+        <div id="status-indicator">
+            <div id="status-dot" class="status-dot"></div>
+            <span id="status-text" class="status-text">Waiting for Camera...</span>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="glass-panel">
+            <div class="panel-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                    </path>
+                </svg>
+                <span>Controls</span>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Formation</label>
+                <select id="shape-select">
+                    <option value="sphere">Neural Sphere</option>
+                    <option value="cube">Quantum Cube</option>
+                    <option value="torus">Flux Ring</option>
+                    <option value="spiral">DNA Helix</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Particle Density</label>
+                <select id="density-select">
+                    <option value="4000">Low (4k)</option>
+                    <option value="8000" selected>Medium (8k)</option>
+                    <option value="15000">High (15k)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <div class="toggle-row">
+                    <span class="toggle-label">Track Hand Pos.</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="track-pos-toggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="toggle-row">
+                    <span class="toggle-label">Auto Rotation</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="auto-rotate-toggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div style="font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-top: 10px;">
+                Show open palm to EXPAND<br>Close fist to COMPRESS
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        // --- Configuration & State ---
+        const CONFIG = {
+            particleCount: 8000,
+            particleSize: 0.08,
+            baseColor: new THREE.Color('#00f3ff'), // Cyan
+            activeColor: new THREE.Color('#ff00aa'), // Pink
+            lerpSpeed: 0.08,
+            handLerpSpeed: 0.1,
+            autoRotateSpeed: 0.002
+        };
+
+        const STATE = {
+            targetShape: 'sphere',
+            handDetected: false,
+            handPosition: { x: 0, y: 0 },
+            handTension: 0, // 0 = Open, 1 = Closed
+            autoRotate: true,
+            trackHand: true
+        };
+
+        // --- Three.js Globals ---
+        let scene, camera, renderer;
+        let particleSystem, geometry;
+        let particlesData = []; // Store custom data per particle (target pos, DNA offset, etc)
+
+        // --- Initialization ---
+        function init() {
+            // Scene Setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x020205, 0.035);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 4;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Create Particles
+            createParticles(CONFIG.particleCount);
+
+            // Lights (Subtle ambient)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            setupUIHandlers();
+
+            // Start Animation Loop
+            animate();
+
+            // Initialize MediaPipe
+            initMediaPipe();
+        }
+
+        // --- Particle System Logic ---
+        function createParticles(count) {
+            if (particleSystem) {
+                scene.remove(particleSystem);
+                geometry.dispose();
+            }
+
+            geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+
+            particlesData = [];
+
+            const color = new THREE.Color(CONFIG.baseColor);
+
+            for (let i = 0; i < count; i++) {
+                // Initialize at random positions
+                positions[i * 3] = (Math.random() - 0.5) * 10;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
+
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+
+                particlesData.push({
+                    originalPos: new THREE.Vector3(), // Target position based on shape
+                    currentPos: new THREE.Vector3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]),
+                    velocity: new THREE.Vector3(),
+                    randomOffset: Math.random() * Math.PI * 2 // For organic breathing
+                });
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // Material
+            const material = new THREE.PointsMaterial({
+                size: CONFIG.particleSize,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            particleSystem = new THREE.Points(geometry, material);
+            scene.add(particleSystem);
+
+            // Generate initial targets
+            updateShapeTargets(STATE.targetShape);
+        }
+
+        function updateShapeTargets(shape) {
+            const count = particlesData.length;
+
+            for (let i = 0; i < count; i++) {
+                const u = Math.random();
+                const v = Math.random();
+                const p = particlesData[i];
+                let x, y, z;
+
+                switch (shape) {
+                    case 'cube':
+                        const size = 2.5;
+                        x = (Math.random() - 0.5) * size;
+                        y = (Math.random() - 0.5) * size;
+                        z = (Math.random() - 0.5) * size;
+                        break;
+
+                    case 'torus':
+                        // Torus parametric
+                        const theta = Math.random() * Math.PI * 2;
+                        const phi = Math.random() * Math.PI * 2;
+                        const R = 1.5; // Main radius
+                        const r = 0.6; // Tube radius
+                        x = (R + r * Math.cos(theta)) * Math.cos(phi);
+                        y = (R + r * Math.cos(theta)) * Math.sin(phi);
+                        z = r * Math.sin(theta);
+                        break;
+
+                    case 'spiral':
+                        // DNA Double Helix
+                        const h = 4; // Height
+                        const turns = 3;
+                        const t = (Math.random() - 0.5) * h;
+                        const angle = t * turns;
+                        const radius = 1;
+                        // Split into two strands
+                        const strand = Math.random() > 0.5 ? 0 : Math.PI;
+                        x = radius * Math.cos(angle + strand);
+                        z = radius * Math.sin(angle + strand);
+                        y = t;
+                        // Add some noise for thickness
+                        x += (Math.random() - 0.5) * 0.2;
+                        z += (Math.random() - 0.5) * 0.2;
+                        y += (Math.random() - 0.5) * 0.2;
+                        break;
+
+                    case 'sphere':
+                    default:
+                        // Uniform sphere distribution
+                        const thetaS = 2 * Math.PI * u;
+                        const phiS = Math.acos(2 * v - 1);
+                        const rS = 1.8;
+                        x = rS * Math.sin(phiS) * Math.cos(thetaS);
+                        y = rS * Math.sin(phiS) * Math.sin(thetaS);
+                        z = rS * Math.cos(phiS);
+                        break;
+                }
+
+                p.originalPos.set(x, y, z);
+            }
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = Date.now() * 0.001;
+
+            const positions = geometry.attributes.position.array;
+            const colors = geometry.attributes.color.array;
+
+            // Hand Influence Logic
+            // Tension 0 (Open) -> Scale 1.5, Color Cyan
+            // Tension 1 (Closed) -> Scale 0.5, Color Pink
+
+            // Base scale fluctuates slightly for breathing plus hand influence
+            let targetScale = 1.0;
+            let targetColor = CONFIG.baseColor;
+
+            if (STATE.handDetected) {
+                // Determine target state based on tension
+                // Tension ranges from roughly 0 (wide open) to 1.0 (clenched)
+                // We want: Open -> Expand (Explode), Closed -> Contract (Implode)
+
+                // Map tension: 0 (Open) -> Scale 1.8, 1 (Closed) -> Scale 0.2
+                // Note: tension is calculated below in MediaPipe section.
+                // Usually normalized "openness" is easier. Let's say tension 1 is closed.
+                const scaleFactor = THREE.MathUtils.lerp(1.8, 0.2, STATE.handTension);
+                targetScale = scaleFactor;
+
+                // Color mixing
+                targetColor = new THREE.Color().lerpColors(CONFIG.baseColor, CONFIG.activeColor, STATE.handTension);
+            }
+
+            // Particle Update Loop
+            for (let i = 0; i < particlesData.length; i++) {
+                const p = particlesData[i];
+
+                // 1. Calculate Target Position with Modifiers
+                const target = p.originalPos.clone();
+
+                // Apply Scale (Breathing + Hand Interaction)
+                // Add noise to breathing
+                const breathing = 1 + Math.sin(time * 1.5 + p.randomOffset) * 0.05;
+                target.multiplyScalar(targetScale * breathing);
+
+                // 2. Lerp Current Position to Target
+                p.currentPos.lerp(target, CONFIG.lerpSpeed);
+
+                // Update Geometry
+                positions[i * 3] = p.currentPos.x;
+                positions[i * 3 + 1] = p.currentPos.y;
+                positions[i * 3 + 2] = p.currentPos.z;
+
+                // 3. Color Update
+                // Lerp current color towards target color
+                colors[i * 3] = THREE.MathUtils.lerp(colors[i * 3], targetColor.r, 0.1);
+                colors[i * 3 + 1] = THREE.MathUtils.lerp(colors[i * 3 + 1], targetColor.g, 0.1);
+                colors[i * 3 + 2] = THREE.MathUtils.lerp(colors[i * 3 + 2], targetColor.b, 0.1);
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.color.needsUpdate = true;
+
+            // Global Rotation
+            if (STATE.autoRotate && !STATE.handDetected) {
+                particleSystem.rotation.y += CONFIG.autoRotateSpeed;
+                particleSystem.rotation.x += CONFIG.autoRotateSpeed * 0.5;
+            } else if (STATE.handDetected && STATE.trackHand) {
+                // Map Hand X/Y to Particles Rotation/Position
+                // Map hand x (0 to 1) to rotation y (-1 to 1)
+                const targetRotY = (STATE.handPosition.x - 0.5) * 2; // -1 to 1
+                const targetRotX = (STATE.handPosition.y - 0.5) * 2; // -1 to 1
+
+                particleSystem.rotation.y = THREE.MathUtils.lerp(particleSystem.rotation.y, targetRotY, CONFIG.handLerpSpeed);
+                particleSystem.rotation.x = THREE.MathUtils.lerp(particleSystem.rotation.x, targetRotX, CONFIG.handLerpSpeed);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- MediaPipe Hand Tracking ---
+        function initMediaPipe() {
+            const videoElement = document.getElementById('video-feed');
+
+            const hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onHandsResults);
+
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 320,
+                height: 240
+            });
+
+            cameraUtils.start()
+                .then(() => {
+                    document.getElementById('loader').style.opacity = '0';
+                    setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+                    updateStatus(true, "Camera Active - Searching for Hands");
+                })
+                .catch(err => {
+                    console.error("Camera error:", err);
+                    updateStatus(false, "Camera Error - Check Permissions");
+                });
+        }
+
+        function onHandsResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                STATE.handDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                updateStatus(true, "Hand Tracking Active");
+
+                // 1. Calculate Openness/Tension
+                // Logic: Measure distance between wrist(0) and average of fingertips(4,8,12,16,20)
+                // Normalize it against palm size (wrist to middle finger mcp) to be scale invariant.
+                // Simple approach: Distance from wrist (0) to Middle Finger Tip (12) 
+                // vs Wrist (0) to Index MCP (5) reference.
+
+                // Let's use bounding box or spread.
+                // Easiest "Fist vs Open": Measure distance of fingertips to palm center (0 or 9).
+
+                const palmBase = landmarks[0];
+                const tips = [4, 8, 12, 16, 20];
+                let totalDist = 0;
+
+                tips.forEach(idx => {
+                    const tip = landmarks[idx];
+                    const dist = Math.sqrt(
+                        Math.pow(tip.x - palmBase.x, 2) +
+                        Math.pow(tip.y - palmBase.y, 2)
+                    );
+                    totalDist += dist;
+                });
+
+                const avgDist = totalDist / 5;
+
+                // Heuristic: Open hand avgDist ~ 0.3 - 0.4 (normalized coord)
+                // Closed fist avgDist ~ 0.1 - 0.15
+                // Map 0.15 -> 1.0 (Closed), 0.35 -> 0.0 (Open)
+
+                const minOpen = 0.15;
+                const maxOpen = 0.35; // Tuned for typical webcam distance
+                let normalizedTension = 1 - ((avgDist - minOpen) / (maxOpen - minOpen));
+                normalizedTension = Math.max(0, Math.min(1, normalizedTension)); // Clamp 0-1
+
+                STATE.handTension = normalizedTension; // 1 = Closed, 0 = Open
+
+                // 2. Position tracking
+                // MediaPipe x is 0-1 (left-right), y is 0-1 (top-bottom)
+                // Center is 0.5, 0.5
+                // We mirror x for intuitiveness
+                STATE.handPosition.x = 1 - landmarks[9].x; // Use Middle MCP as center anchor
+                STATE.handPosition.y = landmarks[9].y;
+
+            } else {
+                STATE.handDetected = false;
+                STATE.handTension = 0; // Default to open/relaxed
+                updateStatus(true, "Camera Active - No Hand Detected");
+            }
+        }
+
+        // --- UI & Controls ---
+        function setupUIHandlers() {
+            // Shape Selection
+            document.getElementById('shape-select').addEventListener('change', (e) => {
+                STATE.targetShape = e.target.value;
+                updateShapeTargets(STATE.targetShape);
+            });
+
+            // Density Selection
+            document.getElementById('density-select').addEventListener('change', (e) => {
+                const newCount = parseInt(e.target.value);
+                CONFIG.particleCount = newCount;
+                createParticles(newCount);
+            });
+
+            // Toggles
+            document.getElementById('track-pos-toggle').addEventListener('change', (e) => {
+                STATE.trackHand = e.target.checked;
+                if (!STATE.trackHand) {
+                    // Reset rotation ease
+                    particleSystem.rotation.set(0, 0, 0);
+                }
+            });
+
+            document.getElementById('auto-rotate-toggle').addEventListener('change', (e) => {
+                STATE.autoRotate = e.target.checked;
+            });
+        }
+
+        function updateStatus(active, text) {
+            const dot = document.getElementById('status-dot');
+            const txt = document.getElementById('status-text');
+
+            if (active) dot.classList.add('active');
+            else dot.classList.remove('active');
+
+            txt.innerText = text;
+        }
+
+        // Start initialization
+        init();
+
+    </script>
+</body>
+
+</html>
